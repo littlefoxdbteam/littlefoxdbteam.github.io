@@ -1,40 +1,32 @@
-# generated types
-.astro/
+# Vim
+*~
+*.sw[p_]
 
-# unwanted types
-**/env.d.ts
+# IntelliJ IDEA
+*.idea
 
-# System / Log files
-*.DS_Store
-*.log
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
 
-# Archives
-*.zip
+# Ruby Gem
+*.gem
+.bundle
+Gemfile.lock
+**/vendor/bundle
 
-# Sass Cache
-.sass-cache
+# Node.js and NPM
+node_modules
+npm-debug.log*
+package-lock.json
+codekit-config.json
 
-# Project files
-.idea
-nbproject
-nbproject/private
-.vscode/
-.vs/
+# macOS
+.DS_Store
 
-# Node / Bower
-node_modules/
-bower_components/
-
-# Docs
-/docs/_site/
-/docs/vendor/
-/docs/.bundle/
-/docs_html/
-.jekyll-cache/
+# Jekyll generated files
+.jekyll-cache
 .jekyll-metadata
-
-# ETC
-TODO
-test.html
-ad.js
-/.cache/
+.sass-cache
+_asset_bundler_cache
+_site

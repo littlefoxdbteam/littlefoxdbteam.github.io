@@ -1,34 +1,23 @@
-# Contributing to AdminLTE
+# Contributing
 
-Contributions are always **welcome and recommended**! Here is how for beginner's: [Get started with open source click here](https://youtu.be/GbqSvJs-6W4)
+Found a typo in the documentation or interested in [fixing a bug](https://github.com/mmistakes/minimal-mistakes/issues)? Then by all means [submit an issue](https://github.com/mmistakes/minimal-mistakes/issues/new) or [pull request](https://help.github.com/articles/using-pull-requests/). If this is your first pull request, it may be helpful to read up on the [GitHub Flow](https://guides.github.com/introduction/flow/) first.
 
-1. Contribution Requirements :
-    * When you contribute, you agree to give a non-exclusive license to AdminLTE.io to use that contribution in any context as we (AdminLTE.io) see appropriate.
-    * If you use content provided by another party, it must be appropriately licensed using an [open source](https://opensource.org/licenses) license.
-    * Contributions are only accepted through GitHub pull requests.
-    * Finally, contributed code must work in all supported browsers (see above for browser support).
-2. Installation :
-    * Fork the repository ([here is the guide](https://help.github.com/articles/fork-a-repo/)).
-    * Clone to your machine
+For help with using the theme or general Jekyll support questions, please use the [Jekyll Talk forums](https://talk.jekyllrb.com/).
 
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/AdminLTE.git
-    ```
-    * Create a new branch from `master`
-3. Compile dist files (Development) :
-    * To compile the dist files you need Node.js 18 or higher/npm (node package manager)
-    * `npm install` (install npm deps)
-    * `npm run dev` (developer mode, autocompile with browsersync support for live demo)
-    * Make your changes only in `./src` Folder OR `package.json` in any files which are necessary for contribution
-    * Do not make changes in `./dist/**` Because it contains compiled files and do not include in PR (Pull Request)
-    * `npm run production` (compile css/js files and test all pages are perfectly working fine, before creating a pull request)
-4. Create a pull request to `master` branch
+Minimal Mistakes has been designed as a base for you to customize and fit your 
+site's unique needs. Please keep this in mind when requesting features and/or 
+submitting pull requests. If it's not something that most people will use, I 
+probably won't consider it. When in doubt ask.
 
-## Online one-click setup for contributing
+This goes for author sidebar links and "share button" additions -- I have no 
+intention of merging in every possibly option, the essentials are there to get 
+you started :smile:.
 
-You can use [Codespace](https://docs.github.com/en/codespaces) an online IDE which is free for Open Source for working on issues or making PRs (Pull Requests). With a single click it will launch a workspace and automatically:
+## Pull Requests
 
-- clone the `AdminLTE` repo.
-- Open with [Codespace](https://docs.github.com/en/codespaces) or [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/from-referrer/)
-- install the dependencies.
-- run `npm run dev` to start the server.
+When submitting a pull request:
+
+1. Clone the repo.
+2. Create a branch off of `master` and give it a meaningful name (e.g. 
+   `my-awesome-new-feature`) and describe the feature or fix.
+3. Open a pull request on GitHub.

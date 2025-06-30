@@ -1,7 +1,10 @@
-# Enforce Unix newlines
-* text=auto eol=lf
+assets/fonts/*                  linguist-vendored
+assets/js/main.min.js           linguist-vendored
+assets/js/lunr/*                linguist-vendored
+assets/js/plugins/*             linguist-vendored
+assets/js/vendor/*              linguist-vendored
+_sass/minimal-mistakes/vendor/* linguist-vendored
+CHANGELOG.md                    text merge=union
+docs/_docs/18-history.md        text merge=union
 
-# Ignores for analysis is used to produce the language stats bar which displays the languages percentages
-plugins/* linguist-vendored=true
-docs/* linguist-vendored=true
-src/html/* linguist-vendored=true
+*.md                            text
