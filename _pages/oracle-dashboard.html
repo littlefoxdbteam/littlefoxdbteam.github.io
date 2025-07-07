@@ -68,6 +68,19 @@ permalink: /oracle-dashboard.html
             border-radius: 5px;
             margin: 10px 0;
         }
+        .connection-status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body style="background-color: #f8f9fa;">
@@ -76,9 +89,53 @@ permalink: /oracle-dashboard.html
             <i class="fas fa-database"></i> Oracle 쿼리 대시보드
         </h1>
         
+        <!-- Oracle DB 연결 설정 -->
+        <div class="dashboard-card">
+            <h4><i class="fas fa-plug"></i> Oracle DB 연결</h4>
+            <div id="connectionForm">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="host" class="form-label">호스트:</label>
+                        <input type="text" class="form-control" id="host" value="localhost" placeholder="호스트 주소">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="port" class="form-label">포트:</label>
+                        <input type="number" class="form-control" id="port" value="1521" placeholder="포트">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="serviceName" class="form-label">서비스명:</label>
+                        <input type="text" class="form-control" id="serviceName" value="XE" placeholder="서비스명">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="username" class="form-label">사용자명:</label>
+                        <input type="text" class="form-control" id="username" placeholder="사용자명">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="password" class="form-label">비밀번호:</label>
+                        <input type="password" class="form-control" id="password" placeholder="비밀번호">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-success" onclick="connectOracle()">
+                            <i class="fas fa-link"></i> 연결
+                        </button>
+                        <button class="btn btn-danger" onclick="disconnectOracle()" id="disconnectBtn" style="display: none;">
+                            <i class="fas fa-unlink"></i> 연결 해제
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <div id="connectionStatus" class="connection-status disconnected">
+                            <i class="fas fa-times-circle"></i> 연결되지 않음
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- API 서버 설정 -->
         <div class="dashboard-card">
-            <h4><i class="fas fa-cog"></i> Oracle API 서버 설정</h4>
+            <h4><i class="fas fa-cog"></i> API 서버 설정</h4>
             <div class="row">
                 <div class="col-md-6">
                     <label for="apiUrl" class="form-label">API 서버 URL:</label>
@@ -87,12 +144,12 @@ permalink: /oracle-dashboard.html
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">&nbsp;</label>
-                    <button class="btn btn-primary d-block" onclick="testConnection()">
-                        <i class="fas fa-plug"></i> 연결 테스트
+                    <button class="btn btn-primary d-block" onclick="testApiConnection()">
+                        <i class="fas fa-plug"></i> API 연결 테스트
                     </button>
                 </div>
             </div>
-            <div id="connectionStatus" class="mt-2"></div>
+            <div id="apiStatus" class="mt-2"></div>
         </div>
 
         <!-- 테이블 정보 -->
@@ -100,7 +157,7 @@ permalink: /oracle-dashboard.html
             <div class="col-md-4">
                 <div class="dashboard-card">
                     <h4><i class="fas fa-table"></i> 데이터베이스 테이블</h4>
-                    <button class="btn btn-info mb-2" onclick="loadTables()">
+                    <button class="btn btn-info mb-2" onclick="loadTables()" id="loadTablesBtn" disabled>
                         <i class="fas fa-sync"></i> 테이블 목록 새로고침
                     </button>
                     <div id="tablesList" class="query-history"></div>
@@ -128,7 +185,7 @@ permalink: /oracle-dashboard.html
                 <div class="col-md-4">
                     <label class="form-label">&nbsp;</label>
                     <div class="d-grid gap-2">
-                        <button class="btn btn-success" onclick="executeQuery()">
+                        <button class="btn btn-success" onclick="executeQuery()" id="executeBtn" disabled>
                             <i class="fas fa-play"></i> 쿼리 실행
                         </button>
                         <button class="btn btn-warning" onclick="clearQuery()">
@@ -158,43 +215,182 @@ permalink: /oracle-dashboard.html
     <script>
         let queryHistory = [];
         let currentTables = [];
+        let currentConnectionId = null;
+        let isConnected = false;
 
         // API 서버 URL 가져오기
         function getApiUrl() {
             return document.getElementById('apiUrl').value.trim();
         }
 
-        // 연결 테스트
-        async function testConnection() {
+        // Oracle DB 연결
+        async function connectOracle() {
             const apiUrl = getApiUrl();
-            const statusDiv = document.getElementById('connectionStatus');
+            const host = document.getElementById('host').value.trim();
+            const port = document.getElementById('port').value.trim();
+            const serviceName = document.getElementById('serviceName').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            
+            if (!username || !password) {
+                showConnectionStatus('사용자명과 비밀번호를 입력해주세요.', 'error');
+                return;
+            }
             
             try {
-                statusDiv.innerHTML = '<div class="loading">연결 테스트 중...</div>';
+                showConnectionStatus('Oracle DB에 연결 중...', 'loading');
+                
+                const response = await fetch(`${apiUrl}/api/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        host: host,
+                        port: parseInt(port),
+                        service_name: serviceName
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentConnectionId = data.connection_id;
+                    isConnected = true;
+                    showConnectionStatus(`✅ ${data.user}@${data.host} 연결 성공!`, 'success');
+                    updateConnectionUI();
+                    loadTables();
+                } else {
+                    showConnectionStatus('❌ 연결 실패: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showConnectionStatus('❌ 연결 오류: ' + error.message, 'error');
+            }
+        }
+
+        // Oracle DB 연결 해제
+        async function disconnectOracle() {
+            if (!currentConnectionId) return;
+            
+            const apiUrl = getApiUrl();
+            
+            try {
+                const response = await fetch(`${apiUrl}/api/disconnect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        connection_id: currentConnectionId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentConnectionId = null;
+                    isConnected = false;
+                    showConnectionStatus('연결이 해제되었습니다.', 'disconnected');
+                    updateConnectionUI();
+                    clearAllData();
+                } else {
+                    showConnectionStatus('연결 해제 실패: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showConnectionStatus('연결 해제 오류: ' + error.message, 'error');
+            }
+        }
+
+        // 연결 상태 표시
+        function showConnectionStatus(message, type) {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.className = `connection-status ${type}`;
+            
+            let icon = '';
+            switch(type) {
+                case 'success':
+                    icon = '<i class="fas fa-check-circle"></i> ';
+                    break;
+                case 'error':
+                    icon = '<i class="fas fa-times-circle"></i> ';
+                    break;
+                case 'loading':
+                    icon = '<i class="fas fa-spinner fa-spin"></i> ';
+                    break;
+                case 'disconnected':
+                    icon = '<i class="fas fa-times-circle"></i> ';
+                    break;
+            }
+            
+            statusDiv.innerHTML = icon + message;
+        }
+
+        // 연결 UI 업데이트
+        function updateConnectionUI() {
+            const connectBtn = document.querySelector('button[onclick="connectOracle()"]');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const loadTablesBtn = document.getElementById('loadTablesBtn');
+            const executeBtn = document.getElementById('executeBtn');
+            
+            if (isConnected) {
+                connectBtn.style.display = 'none';
+                disconnectBtn.style.display = 'inline-block';
+                loadTablesBtn.disabled = false;
+                executeBtn.disabled = false;
+            } else {
+                connectBtn.style.display = 'inline-block';
+                disconnectBtn.style.display = 'none';
+                loadTablesBtn.disabled = true;
+                executeBtn.disabled = true;
+            }
+        }
+
+        // API 연결 테스트
+        async function testApiConnection() {
+            const apiUrl = getApiUrl();
+            const statusDiv = document.getElementById('apiStatus');
+            
+            try {
+                statusDiv.innerHTML = '<div class="loading">API 서버 연결 테스트 중...</div>';
                 
                 const response = await fetch(`${apiUrl}/api/health`);
                 const data = await response.json();
                 
                 if (response.ok) {
                     statusDiv.innerHTML = '<div class="success">✅ Oracle API 서버 연결 성공!</div>';
-                    loadTables();
                 } else {
                     statusDiv.innerHTML = '<div class="error">❌ API 서버 오류: ' + data.error + '</div>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = '<div class="error">❌ 연결 실패: ' + error.message + '</div>';
+                statusDiv.innerHTML = '<div class="error">❌ API 서버 연결 실패: ' + error.message + '</div>';
             }
         }
 
         // 테이블 목록 로드
         async function loadTables() {
+            if (!isConnected || !currentConnectionId) {
+                alert('먼저 Oracle DB에 연결해주세요.');
+                return;
+            }
+            
             const apiUrl = getApiUrl();
             const tablesDiv = document.getElementById('tablesList');
             
             try {
                 tablesDiv.innerHTML = '<div class="loading">테이블 목록을 불러오는 중...</div>';
                 
-                const response = await fetch(`${apiUrl}/api/tables`);
+                const response = await fetch(`${apiUrl}/api/tables`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        connection_id: currentConnectionId
+                    })
+                });
+                
                 const data = await response.json();
                 
                 if (data.success) {
@@ -229,13 +425,28 @@ permalink: /oracle-dashboard.html
 
         // 테이블 구조 정보 표시
         async function showTableInfo(tableName) {
+            if (!isConnected || !currentConnectionId) {
+                alert('먼저 Oracle DB에 연결해주세요.');
+                return;
+            }
+            
             const apiUrl = getApiUrl();
             const infoDiv = document.getElementById('tableInfo');
             
             try {
                 infoDiv.innerHTML = '<div class="loading">테이블 정보를 불러오는 중...</div>';
                 
-                const response = await fetch(`${apiUrl}/api/table-info/${tableName}`);
+                const response = await fetch(`${apiUrl}/api/table-info`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        table_name: tableName,
+                        connection_id: currentConnectionId
+                    })
+                });
+                
                 const data = await response.json();
                 
                 if (data.success) {
@@ -269,6 +480,11 @@ permalink: /oracle-dashboard.html
 
         // 샘플 데이터 로드
         async function loadSampleData(tableName) {
+            if (!isConnected || !currentConnectionId) {
+                alert('먼저 Oracle DB에 연결해주세요.');
+                return;
+            }
+            
             const apiUrl = getApiUrl();
             const queryInput = document.getElementById('queryInput');
             
@@ -278,6 +494,11 @@ permalink: /oracle-dashboard.html
 
         // 쿼리 실행
         async function executeQuery() {
+            if (!isConnected || !currentConnectionId) {
+                alert('먼저 Oracle DB에 연결해주세요.');
+                return;
+            }
+            
             const apiUrl = getApiUrl();
             const query = document.getElementById('queryInput').value.trim();
             const statusDiv = document.getElementById('queryStatus');
@@ -299,7 +520,10 @@ permalink: /oracle-dashboard.html
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({
+                        query: query,
+                        connection_id: currentConnectionId
+                    })
                 });
                 
                 const data = await response.json();
@@ -400,10 +624,19 @@ permalink: /oracle-dashboard.html
             document.getElementById('resultInfo').innerHTML = '';
         }
 
-        // 페이지 로드 시 연결 테스트
+        // 모든 데이터 지우기
+        function clearAllData() {
+            clearQuery();
+            document.getElementById('tablesList').innerHTML = '';
+            document.getElementById('tableInfo').innerHTML = '테이블을 선택하면 구조 정보가 표시됩니다.';
+            currentTables = [];
+        }
+
+        // 페이지 로드 시 초기화
         window.onload = function() {
-            testConnection();
+            testApiConnection();
             displayHistory();
+            updateConnectionUI();
         };
     </script>
 </body>

@@ -1,29 +1,96 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session
 from flask_cors import CORS
 import cx_Oracle
 import json
 from datetime import datetime
 import os
+import hashlib
 
 app = Flask(__name__)
 CORS(app)  # GitHub Pages에서 API 호출 허용
+app.secret_key = 'your-secret-key-here'  # 세션을 위한 시크릿 키
 
-# Oracle DB 연결 설정
-DB_CONFIG = {
-    'user': 'your_username',          # Oracle 사용자명
-    'password': 'your_password',      # Oracle 비밀번호
-    'dsn': 'your_host:1521/your_service_name',  # Oracle 연결 문자열
-    'encoding': 'UTF-8'
+# 기본 Oracle DB 연결 설정 (선택사항)
+DEFAULT_DB_CONFIG = {
+    'host': 'localhost',
+    'port': 1521,
+    'service_name': 'XE'
 }
 
-def get_db_connection():
-    """Oracle DB 연결 함수"""
+# 연결 풀 (세션별로 저장)
+connections = {}
+
+def get_db_connection(connection_id=None):
+    """Oracle DB 연결 함수 - 동적 연결 지원"""
+    if connection_id and connection_id in connections:
+        try:
+            # 기존 연결이 유효한지 테스트
+            conn = connections[connection_id]
+            conn.ping()
+            return conn
+        except:
+            # 연결이 끊어진 경우 제거
+            del connections[connection_id]
+    
+    return None
+
+@app.route('/api/connect', methods=['POST'])
+def connect_oracle():
+    """Oracle DB 연결"""
     try:
-        connection = cx_Oracle.connect(**DB_CONFIG)
-        return connection
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        host = data.get('host', DEFAULT_DB_CONFIG['host'])
+        port = data.get('port', DEFAULT_DB_CONFIG['port'])
+        service_name = data.get('service_name', DEFAULT_DB_CONFIG['service_name'])
+        
+        if not username or not password:
+            return jsonify({'error': '사용자명과 비밀번호가 필요합니다.'}), 400
+        
+        # 연결 문자열 생성
+        dsn = f"{host}:{port}/{service_name}"
+        
+        # 연결 시도
+        connection = cx_Oracle.connect(
+            user=username,
+            password=password,
+            dsn=dsn,
+            encoding='UTF-8'
+        )
+        
+        # 연결 성공 시 연결 ID 생성 및 저장
+        connection_id = hashlib.md5(f"{username}@{host}:{port}/{service_name}".encode()).hexdigest()
+        connections[connection_id] = connection
+        
+        return jsonify({
+            'success': True,
+            'connection_id': connection_id,
+            'message': 'Oracle DB 연결 성공!',
+            'user': username,
+            'host': host,
+            'service_name': service_name
+        })
+        
     except Exception as e:
-        print(f"Oracle DB 연결 오류: {e}")
-        return None
+        return jsonify({'error': f'연결 실패: {str(e)}'}), 500
+
+@app.route('/api/disconnect', methods=['POST'])
+def disconnect_oracle():
+    """Oracle DB 연결 해제"""
+    try:
+        data = request.get_json()
+        connection_id = data.get('connection_id')
+        
+        if connection_id and connection_id in connections:
+            connections[connection_id].close()
+            del connections[connection_id]
+            return jsonify({'success': True, 'message': '연결이 해제되었습니다.'})
+        else:
+            return jsonify({'error': '유효하지 않은 연결 ID입니다.'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': f'연결 해제 실패: {str(e)}'}), 500
 
 @app.route('/api/health')
 def health_check():
@@ -36,13 +103,17 @@ def execute_query():
     try:
         data = request.get_json()
         query = data.get('query')
+        connection_id = data.get('connection_id')
         
         if not query:
             return jsonify({'error': '쿼리가 제공되지 않았습니다.'}), 400
         
-        connection = get_db_connection()
+        if not connection_id:
+            return jsonify({'error': '연결 ID가 필요합니다. 먼저 DB에 연결해주세요.'}), 400
+        
+        connection = get_db_connection(connection_id)
         if not connection:
-            return jsonify({'error': 'Oracle DB 연결 실패'}), 500
+            return jsonify({'error': '유효하지 않은 연결입니다. 다시 연결해주세요.'}), 500
         
         cursor = connection.cursor()
         
@@ -65,7 +136,6 @@ def execute_query():
             results.append(dict(zip(columns, row_data)))
         
         cursor.close()
-        connection.close()
         
         return jsonify({
             'success': True,
@@ -78,13 +148,19 @@ def execute_query():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/tables')
+@app.route('/api/tables', methods=['POST'])
 def get_tables():
     """사용 가능한 테이블 목록 조회"""
     try:
-        connection = get_db_connection()
+        data = request.get_json()
+        connection_id = data.get('connection_id')
+        
+        if not connection_id:
+            return jsonify({'error': '연결 ID가 필요합니다. 먼저 DB에 연결해주세요.'}), 400
+        
+        connection = get_db_connection(connection_id)
         if not connection:
-            return jsonify({'error': 'Oracle DB 연결 실패'}), 500
+            return jsonify({'error': '유효하지 않은 연결입니다. 다시 연결해주세요.'}), 500
         
         cursor = connection.cursor()
         
@@ -99,7 +175,6 @@ def get_tables():
         tables = [row[0] for row in cursor.fetchall()]
         
         cursor.close()
-        connection.close()
         
         return jsonify({
             'success': True,
@@ -110,13 +185,23 @@ def get_tables():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/table-info/<table_name>')
-def get_table_info(table_name):
+@app.route('/api/table-info', methods=['POST'])
+def get_table_info():
     """특정 테이블의 구조 정보 조회"""
     try:
-        connection = get_db_connection()
+        data = request.get_json()
+        table_name = data.get('table_name')
+        connection_id = data.get('connection_id')
+        
+        if not table_name:
+            return jsonify({'error': '테이블명이 필요합니다.'}), 400
+        
+        if not connection_id:
+            return jsonify({'error': '연결 ID가 필요합니다. 먼저 DB에 연결해주세요.'}), 400
+        
+        connection = get_db_connection(connection_id)
         if not connection:
-            return jsonify({'error': 'Oracle DB 연결 실패'}), 500
+            return jsonify({'error': '유효하지 않은 연결입니다. 다시 연결해주세요.'}), 500
         
         cursor = connection.cursor()
         
@@ -139,7 +224,6 @@ def get_table_info(table_name):
             })
         
         cursor.close()
-        connection.close()
         
         return jsonify({
             'success': True,
@@ -151,13 +235,23 @@ def get_table_info(table_name):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/sample-data/<table_name>')
-def get_sample_data(table_name):
+@app.route('/api/sample-data', methods=['POST'])
+def get_sample_data():
     """특정 테이블의 샘플 데이터 조회 (최대 10행)"""
     try:
-        connection = get_db_connection()
+        data = request.get_json()
+        table_name = data.get('table_name')
+        connection_id = data.get('connection_id')
+        
+        if not table_name:
+            return jsonify({'error': '테이블명이 필요합니다.'}), 400
+        
+        if not connection_id:
+            return jsonify({'error': '연결 ID가 필요합니다. 먼저 DB에 연결해주세요.'}), 400
+        
+        connection = get_db_connection(connection_id)
         if not connection:
-            return jsonify({'error': 'Oracle DB 연결 실패'}), 500
+            return jsonify({'error': '유효하지 않은 연결입니다. 다시 연결해주세요.'}), 500
         
         cursor = connection.cursor()
         
@@ -181,7 +275,6 @@ def get_sample_data(table_name):
             results.append(dict(zip(columns, row_data)))
         
         cursor.close()
-        connection.close()
         
         return jsonify({
             'success': True,
@@ -199,8 +292,10 @@ if __name__ == '__main__':
     print("Oracle Flask API 서버를 시작합니다...")
     print("API 엔드포인트:")
     print("- GET /api/health : 서버 상태 확인")
+    print("- POST /api/connect : Oracle DB 연결")
+    print("- POST /api/disconnect : Oracle DB 연결 해제")
     print("- POST /api/query : Oracle 쿼리 실행")
-    print("- GET /api/tables : 사용 가능한 테이블 목록")
-    print("- GET /api/table-info/<table_name> : 테이블 구조 정보")
-    print("- GET /api/sample-data/<table_name> : 테이블 샘플 데이터")
+    print("- POST /api/tables : 사용 가능한 테이블 목록")
+    print("- POST /api/table-info : 테이블 구조 정보")
+    print("- POST /api/sample-data : 테이블 샘플 데이터")
     app.run(debug=True, host='0.0.0.0', port=5001) 
