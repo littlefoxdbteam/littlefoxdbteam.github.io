@@ -139,8 +139,7 @@ permalink: /oracle-dashboard.html
             <div class="row">
                 <div class="col-md-6">
                     <label for="apiUrl" class="form-label">API 서버 URL:</label>
-                    <input type="text" class="form-control" id="apiUrl" 
-                           value="http://localhost:5001" placeholder="Oracle API 서버 URL을 입력하세요">
+                    <input type="text" class="form-control" id="apiUrl" value="http://192.168.56.20:5001" readonly>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">&nbsp;</label>
@@ -220,7 +219,7 @@ permalink: /oracle-dashboard.html
 
         // API 서버 URL 가져오기
         function getApiUrl() {
-            return document.getElementById('apiUrl').value.trim();
+            return "http://192.168.56.20:5001";
         }
 
         // Oracle DB 연결
