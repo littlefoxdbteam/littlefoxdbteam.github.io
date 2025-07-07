@@ -1,0 +1,410 @@
+---
+layout: default
+title: Oracle 쿼리 대시보드
+permalink: /oracle-dashboard.html
+---
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle 쿼리 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .connection-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .table-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .query-history {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .history-item {
+            cursor: pointer;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .history-item:hover {
+            background-color: #f8f9fa;
+        }
+        .table-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body style="background-color: #f8f9fa;">
+    <div class="container-fluid mt-4">
+        <h1 class="text-center mb-4">
+            <i class="fas fa-database"></i> Oracle 쿼리 대시보드
+        </h1>
+        
+        <!-- API 서버 설정 -->
+        <div class="dashboard-card">
+            <h4><i class="fas fa-cog"></i> Oracle API 서버 설정</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="apiUrl" class="form-label">API 서버 URL:</label>
+                    <input type="text" class="form-control" id="apiUrl" 
+                           value="http://localhost:5001" placeholder="Oracle API 서버 URL을 입력하세요">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-primary d-block" onclick="testConnection()">
+                        <i class="fas fa-plug"></i> 연결 테스트
+                    </button>
+                </div>
+            </div>
+            <div id="connectionStatus" class="mt-2"></div>
+        </div>
+
+        <!-- 테이블 정보 -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="dashboard-card">
+                    <h4><i class="fas fa-table"></i> 데이터베이스 테이블</h4>
+                    <button class="btn btn-info mb-2" onclick="loadTables()">
+                        <i class="fas fa-sync"></i> 테이블 목록 새로고침
+                    </button>
+                    <div id="tablesList" class="query-history"></div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="dashboard-card">
+                    <h4><i class="fas fa-info-circle"></i> 테이블 구조 정보</h4>
+                    <div id="tableInfo" class="table-info">
+                        테이블을 선택하면 구조 정보가 표시됩니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 쿼리 실행 -->
+        <div class="dashboard-card">
+            <h4><i class="fas fa-search"></i> Oracle 쿼리 실행</h4>
+            <div class="row">
+                <div class="col-md-8">
+                    <label for="queryInput" class="form-label">SQL 쿼리:</label>
+                    <textarea class="form-control" id="queryInput" rows="4" 
+                              placeholder="SELECT * FROM your_table WHERE ROWNUM <= 100"></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="executeQuery()">
+                            <i class="fas fa-play"></i> 쿼리 실행
+                        </button>
+                        <button class="btn btn-warning" onclick="clearQuery()">
+                            <i class="fas fa-eraser"></i> 쿼리 지우기
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="queryStatus" class="mt-2"></div>
+        </div>
+
+        <!-- 쿼리 히스토리 -->
+        <div class="dashboard-card">
+            <h4><i class="fas fa-history"></i> 쿼리 히스토리</h4>
+            <div id="queryHistory" class="query-history"></div>
+        </div>
+
+        <!-- 결과 테이블 -->
+        <div class="dashboard-card">
+            <h4><i class="fas fa-list"></i> 쿼리 결과</h4>
+            <div id="resultInfo" class="mb-2"></div>
+            <div id="resultTable" class="table-container"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let queryHistory = [];
+        let currentTables = [];
+
+        // API 서버 URL 가져오기
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.trim();
+        }
+
+        // 연결 테스트
+        async function testConnection() {
+            const apiUrl = getApiUrl();
+            const statusDiv = document.getElementById('connectionStatus');
+            
+            try {
+                statusDiv.innerHTML = '<div class="loading">연결 테스트 중...</div>';
+                
+                const response = await fetch(`${apiUrl}/api/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<div class="success">✅ Oracle API 서버 연결 성공!</div>';
+                    loadTables();
+                } else {
+                    statusDiv.innerHTML = '<div class="error">❌ API 서버 오류: ' + data.error + '</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="error">❌ 연결 실패: ' + error.message + '</div>';
+            }
+        }
+
+        // 테이블 목록 로드
+        async function loadTables() {
+            const apiUrl = getApiUrl();
+            const tablesDiv = document.getElementById('tablesList');
+            
+            try {
+                tablesDiv.innerHTML = '<div class="loading">테이블 목록을 불러오는 중...</div>';
+                
+                const response = await fetch(`${apiUrl}/api/tables`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentTables = data.tables;
+                    displayTables(data.tables);
+                } else {
+                    tablesDiv.innerHTML = '<div class="error">테이블 목록 로드 실패: ' + data.error + '</div>';
+                }
+            } catch (error) {
+                tablesDiv.innerHTML = '<div class="error">오류: ' + error.message + '</div>';
+            }
+        }
+
+        // 테이블 목록 표시
+        function displayTables(tables) {
+            const tablesDiv = document.getElementById('tablesList');
+            
+            if (tables.length === 0) {
+                tablesDiv.innerHTML = '<div class="text-muted">테이블이 없습니다.</div>';
+                return;
+            }
+            
+            let html = '';
+            tables.forEach(table => {
+                html += `<div class="history-item" onclick="showTableInfo('${table}')">
+                    <i class="fas fa-table"></i> ${table}
+                </div>`;
+            });
+            
+            tablesDiv.innerHTML = html;
+        }
+
+        // 테이블 구조 정보 표시
+        async function showTableInfo(tableName) {
+            const apiUrl = getApiUrl();
+            const infoDiv = document.getElementById('tableInfo');
+            
+            try {
+                infoDiv.innerHTML = '<div class="loading">테이블 정보를 불러오는 중...</div>';
+                
+                const response = await fetch(`${apiUrl}/api/table-info/${tableName}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = `<h5>테이블: ${data.table_name}</h5>`;
+                    html += '<table class="table table-sm">';
+                    html += '<thead><tr><th>컬럼명</th><th>데이터 타입</th><th>길이</th><th>NULL 허용</th></tr></thead>';
+                    html += '<tbody>';
+                    
+                    data.columns.forEach(col => {
+                        html += `<tr>
+                            <td>${col.name}</td>
+                            <td>${col.type}</td>
+                            <td>${col.length || '-'}</td>
+                            <td>${col.nullable === 'Y' ? 'YES' : 'NO'}</td>
+                        </tr>`;
+                    });
+                    
+                    html += '</tbody></table>';
+                    html += `<button class="btn btn-sm btn-outline-primary" onclick="loadSampleData('${tableName}')">
+                        <i class="fas fa-eye"></i> 샘플 데이터 보기
+                    </button>`;
+                    
+                    infoDiv.innerHTML = html;
+                } else {
+                    infoDiv.innerHTML = '<div class="error">테이블 정보 로드 실패: ' + data.error + '</div>';
+                }
+            } catch (error) {
+                infoDiv.innerHTML = '<div class="error">오류: ' + error.message + '</div>';
+            }
+        }
+
+        // 샘플 데이터 로드
+        async function loadSampleData(tableName) {
+            const apiUrl = getApiUrl();
+            const queryInput = document.getElementById('queryInput');
+            
+            queryInput.value = `SELECT * FROM ${tableName} WHERE ROWNUM <= 10`;
+            executeQuery();
+        }
+
+        // 쿼리 실행
+        async function executeQuery() {
+            const apiUrl = getApiUrl();
+            const query = document.getElementById('queryInput').value.trim();
+            const statusDiv = document.getElementById('queryStatus');
+            const resultDiv = document.getElementById('resultTable');
+            const resultInfoDiv = document.getElementById('resultInfo');
+            
+            if (!query) {
+                statusDiv.innerHTML = '<div class="error">쿼리를 입력해주세요.</div>';
+                return;
+            }
+            
+            try {
+                statusDiv.innerHTML = '<div class="loading">쿼리 실행 중...</div>';
+                resultDiv.innerHTML = '';
+                resultInfoDiv.innerHTML = '';
+                
+                const response = await fetch(`${apiUrl}/api/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.innerHTML = '<div class="success">✅ 쿼리 실행 성공!</div>';
+                    displayQueryResult(data);
+                    addToHistory(query);
+                } else {
+                    statusDiv.innerHTML = '<div class="error">쿼리 실행 실패: ' + data.error + '</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="error">오류: ' + error.message + '</div>';
+            }
+        }
+
+        // 쿼리 결과 표시
+        function displayQueryResult(data) {
+            const resultDiv = document.getElementById('resultTable');
+            const resultInfoDiv = document.getElementById('resultInfo');
+            
+            // 결과 정보 표시
+            resultInfoDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 
+                    총 ${data.row_count}행, ${data.columns.length}컬럼이 조회되었습니다.
+                    (조회 시간: ${new Date(data.timestamp).toLocaleString()})
+                </div>
+            `;
+            
+            if (!data.data || data.data.length === 0) {
+                resultDiv.innerHTML = '<div class="alert alert-warning">조회된 데이터가 없습니다.</div>';
+                return;
+            }
+            
+            // 테이블 생성
+            let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+            
+            // 헤더
+            html += '<thead class="table-dark"><tr>';
+            data.columns.forEach(col => {
+                html += `<th>${col}</th>`;
+            });
+            html += '</tr></thead>';
+            
+            // 데이터
+            html += '<tbody>';
+            data.data.forEach(row => {
+                html += '<tr>';
+                data.columns.forEach(col => {
+                    html += `<td>${row[col] || ''}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            
+            resultDiv.innerHTML = html;
+        }
+
+        // 쿼리 히스토리에 추가
+        function addToHistory(query) {
+            queryHistory.unshift(query);
+            if (queryHistory.length > 10) {
+                queryHistory.pop();
+            }
+            displayHistory();
+        }
+
+        // 히스토리 표시
+        function displayHistory() {
+            const historyDiv = document.getElementById('queryHistory');
+            
+            if (queryHistory.length === 0) {
+                historyDiv.innerHTML = '<div class="text-muted">쿼리 히스토리가 없습니다.</div>';
+                return;
+            }
+            
+            let html = '';
+            queryHistory.forEach((query, index) => {
+                html += `<div class="history-item" onclick="loadQueryFromHistory('${query.replace(/'/g, "\\'")}')">
+                    <i class="fas fa-clock"></i> ${query.substring(0, 50)}${query.length > 50 ? '...' : ''}
+                </div>`;
+            });
+            
+            historyDiv.innerHTML = html;
+        }
+
+        // 히스토리에서 쿼리 로드
+        function loadQueryFromHistory(query) {
+            document.getElementById('queryInput').value = query;
+        }
+
+        // 쿼리 지우기
+        function clearQuery() {
+            document.getElementById('queryInput').value = '';
+            document.getElementById('queryStatus').innerHTML = '';
+            document.getElementById('resultTable').innerHTML = '';
+            document.getElementById('resultInfo').innerHTML = '';
+        }
+
+        // 페이지 로드 시 연결 테스트
+        window.onload = function() {
+            testConnection();
+            displayHistory();
+        };
+    </script>
+</body>
+</html> 
